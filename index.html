@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>꽁초헌터 | 우리 동네 담배꽁초 지도</title>
+  <meta name="description" content="시민들이 함께 담배꽁초 무단투기 구역을 신고하고 정화하는 무료 지도 플랫폼" />
+  <meta name="theme-color" content="#ffffff" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;800;900&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet (무료 지도, API 키 불필요) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Supabase JS Client -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- 헤더 -->
+  <header class="header">
+    <div class="brand" onclick="location.reload()">
+      <div class="brand-icon"><i data-lucide="flame"></i></div>
+      <h1 class="brand-title">꽁초헌터</h1>
+    </div>
+
+    <div class="view-toggle">
+      <button id="btnViewMap" class="toggle-btn active"><i data-lucide="map"></i><span>지도</span></button>
+      <button id="btnViewFeed" class="toggle-btn"><i data-lucide="grid"></i><span>사진</span></button>
+    </div>
+
+    <div class="nav-controls">
+      <button id="btnOpenRankingModal" class="btn-ghost"><i data-lucide="trophy" style="width:16px;height:16px;"></i></button>
+
+      <div class="auth-status">
+        <div id="authLoggedOut" style="display:flex;">
+          <button id="btnOpenAuthModal" class="btn-ghost">로그인</button>
+        </div>
+        <div id="authLoggedIn" style="display:none; align-items:center; gap:8px;">
+          <div class="user-pill">
+            <div id="currentUserAvatar" class="user-avatar">헌</div>
+            <span id="currentUsername"></span>
+          </div>
+          <button id="btnLogout" class="btn-ghost">로그아웃</button>
+        </div>
+      </div>
+
+      <button id="btnOpenReportModal" class="btn-primary">
+        <i data-lucide="plus-circle"></i><span class="btn-label">신고하기</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 통계 배너 -->
+  <section class="stats-banner">
+    <div class="stats-group">
+      <div class="stat-item"><span>총 신고</span><span id="statTotal" class="stat-value">0건</span></div>
+      <div class="stat-item"><span>정화 완료</span><span id="statCleaned" class="stat-value stat-highlight">0곳</span></div>
+    </div>
+    <div id="statMyPointsWrap" class="stat-item" style="display:none;">
+      <span>내 포인트</span>
+      <span id="statMyPoints" class="stat-value" style="color: var(--accent-orange);">0P</span>
+    </div>
+  </section>
+
+  <!-- 검색 & 필터 -->
+  <section class="filter-section">
+    <div class="search-input-wrapper">
+      <i data-lucide="search" class="search-icon" style="width: 18px; height: 18px;"></i>
+      <input type="text" id="searchInput" class="search-input" placeholder="지역명, 주소 검색" />
+    </div>
+
+    <div class="filter-chips">
+      <button class="chip active" data-filter="all">전체</button>
+      <button class="chip" data-filter="reported">신고됨</button>
+      <button class="chip" data-filter="in_progress">청소중</button>
+      <button class="chip" data-filter="cleaned">청소완료</button>
+      <button class="chip" data-filter="high">심각</button>
+    </div>
+  </section>
+
+  <!-- 메인 -->
+  <main class="main-container">
+
+    <section id="mapViewSection" class="map-view-container">
+      <div id="map"></div>
+    </section>
+
+    <section id="feedViewSection" class="feed-view-container" style="display: none;">
+      <div class="feed-header-controls">
+        <h3><i data-lucide="camera" style="color: var(--accent-emerald); width:20px; height:20px;"></i> 시민 헌터 갤러리</h3>
+        <div class="feed-layout-toggle">
+          <button id="btnFeedGrid" class="sub-toggle-btn active"><i data-lucide="grid-3x3" style="width:14px;height:14px;"></i> 그리드</button>
+          <button id="btnFeedCards" class="sub-toggle-btn"><i data-lucide="list" style="width:14px;height:14px;"></i> 카드</button>
+        </div>
+      </div>
+      <div id="feedContainer"></div>
+    </section>
+
+  </main>
+
+  <!-- 신고 등록 모달 -->
+  <div id="reportModal" class="modal-backdrop">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title"><i data-lucide="camera" style="color: var(--accent-orange);"></i> 꽁초 신고하기</h3>
+        <button id="btnCloseReportModal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <form id="reportForm" class="modal-body">
+
+        <div class="form-group">
+          <label class="form-label">현장 사진</label>
+          <div id="photoUploadBox" class="photo-upload-box">
+            <input type="file" id="photoInput" accept="image/*" style="display: none;" />
+            <img id="uploadPreview" class="upload-preview" style="display: none;" alt="미리보기" />
+            <div id="uploadPlaceholder">
+              <i data-lucide="image-plus" style="width: 34px; height: 34px; color: var(--text-dim); margin-bottom: 8px;"></i>
+              <p id="uploadPlaceholderText" class="upload-placeholder-text">터치하여 사진 업로드</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">제목</label>
+          <input type="text" id="reportTitle" class="form-input" placeholder="예: 강남역 11번 출구 배수구 꽁초" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">상세 설명</label>
+          <textarea id="reportDesc" class="form-textarea" rows="3" placeholder="꽁초 양, 위치, 청소 필요성 등을 적어주세요"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">심각도</label>
+            <select id="reportSeverity" class="form-select">
+              <option value="medium">보통</option>
+              <option value="high">심각</option>
+              <option value="low">낮음</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">제보자</label>
+            <div id="reporterLoggedIn" style="display:none;">
+              <div class="reporter-line"><i data-lucide="user-check" style="width:16px;height:16px; color: var(--accent-green);"></i><span id="reporterUsername"></span></div>
+            </div>
+            <div id="reporterGuest" style="display:none;">
+              <input type="text" id="reportGuestName" class="form-input" placeholder="닉네임 (선택)" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <label class="form-label" style="margin-bottom: 0;">발생 위치</label>
+            <button type="button" id="btnAutoGPS" class="gps-btn"><i data-lucide="locate-fixed" style="width:13px;height:13px;"></i> 현재 위치 가져오기</button>
+          </div>
+          <div class="mini-map-container"><div id="pickerMap"></div></div>
+          <input type="text" id="reportAddress" class="form-input" style="margin-top: 8px;" placeholder="지도를 클릭해 위치를 선택하세요" readonly />
+        </div>
+
+        <div class="form-actions">
+          <button type="button" id="btnCancelReport" class="btn-secondary" style="flex: 1; justify-content: center;">취소</button>
+          <button type="submit" id="btnSubmitReport" class="btn-primary" style="flex: 2; justify-content: center;">신고 등록하기</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- 상세 보기 모달 -->
+  <div id="detailModal" class="modal-backdrop">
+    <div class="modal-content" style="max-width: 720px;">
+      <div class="modal-header">
+        <h3 id="detailTitle" class="modal-title">상세 내역</h3>
+        <button id="btnCloseDetailModal" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 0;">
+        <div class="detail-grid">
+          <div class="detail-img-wrap"><img id="detailImg" src="" alt="상세 사진" /></div>
+
+          <div class="detail-info">
+            <div>
+              <div class="detail-user-row">
+                <div id="detailUserAvatar" class="user-avatar">CH</div>
+                <div>
+                  <div id="detailUserName" class="user-info-name">시민 헌터</div>
+                  <div id="detailAddress" class="detail-address"></div>
+                </div>
+              </div>
+
+              <p id="detailDesc" class="detail-desc"></p>
+              <div id="detailTime" class="detail-time"></div>
+
+              <div class="detail-action-stats">
+                <span class="likes-stat">❤ 공감 <span id="detailLikesCount">0</span></span>
+                <span class="cleanup-stat">🧹 청소요청 <span id="detailCleanupVotes">0</span></span>
+              </div>
+
+              <button id="btnMarkCleaned" class="mark-cleaned-btn"><i data-lucide="check-circle" style="width:14px;height:14px;"></i> 청소 완료로 표시</button>
+
+              <h4 class="comments-heading">댓글</h4>
+              <div id="detailCommentsList"></div>
+            </div>
+
+            <form id="commentForm">
+              <input type="text" id="commentInput" class="form-input" placeholder="댓글을 입력하세요" required />
+              <button type="submit" class="btn-primary" style="padding: 8px 14px; font-size: 0.82rem; white-space: nowrap;">작성</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 로그인 / 회원가입 모달 -->
+  <div id="authModal" class="modal-backdrop">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3 id="authModalTitle" class="modal-title">로그인</h3>
+        <button id="btnCloseAuthModal" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="authError" class="auth-error"></div>
+        <form id="authForm">
+          <div class="form-group">
+            <label class="form-label">아이디</label>
+            <input type="text" id="authUsername" class="form-input" placeholder="아이디" required autocomplete="username" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">비밀번호</label>
+            <input type="password" id="authPassword" class="form-input" placeholder="비밀번호 (6자 이상)" required minlength="6" autocomplete="current-password" />
+          </div>
+          <button type="submit" id="btnAuthSubmit" class="btn-primary" style="width: 100%; justify-content: center;">로그인</button>
+        </form>
+
+        <div id="authSwitchToSignup" class="auth-switch">
+          계정이 없으신가요? <button id="btnAuthSwitchToSignup">회원가입</button>
+        </div>
+        <div id="authSwitchToLogin" class="auth-switch" style="display:none;">
+          이미 계정이 있으신가요? <button id="btnAuthSwitchToLogin">로그인</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 랭킹 모달 -->
+  <div id="rankingModal" class="modal-backdrop">
+    <div class="modal-content" style="max-width: 420px;">
+      <div class="modal-header">
+        <h3 class="modal-title"><i data-lucide="trophy" style="color: var(--accent-orange);"></i> 랭킹</h3>
+        <button id="btnCloseRankingModal" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="ranking-tabs">
+          <button id="tabMonthlyRanking" class="ranking-tab active">이달의 베스트 헌터</button>
+          <button id="tabReportRanking" class="ranking-tab">신고왕</button>
+        </div>
+        <div id="rankingList"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>lucide.createIcons();</script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
