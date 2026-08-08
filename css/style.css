@@ -318,9 +318,10 @@ button { font-family: inherit; }
 
 .custom-pin-wrapper:hover .custom-pin { transform: rotate(-45deg) scale(1.2); z-index: 999; }
 
-.pin-high { background: var(--accent-red); }
+.pin-critical { background: var(--accent-red); }
+.pin-severe { background: #f97316; }
 .pin-medium { background: #f59e0b; }
-.pin-low { background: #3b82f6; }
+.pin-slight { background: #3b82f6; }
 .pin-cleaned { background: var(--accent-emerald); }
 
 .leaflet-popup-content-wrapper {
@@ -343,9 +344,10 @@ button { font-family: inherit; }
 .popup-badge-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 
 .badge { font-size: 0.7rem; font-weight: 700; padding: 3px 9px; border-radius: var(--radius-sm); }
-.badge-reported { background: rgba(220, 38, 38, 0.1); color: var(--accent-red); }
-.badge-in_progress { background: rgba(245, 158, 11, 0.14); color: #b45309; }
-.badge-cleaned { background: rgba(16, 185, 129, 0.14); color: var(--accent-green); }
+.badge-critical { background: rgba(220, 38, 38, 0.1); color: var(--accent-red); }
+.badge-severe { background: rgba(249, 115, 22, 0.14); color: #c2410c; }
+.badge-medium { background: rgba(245, 158, 11, 0.14); color: #b45309; }
+.badge-slight { background: rgba(59, 130, 246, 0.12); color: #2563eb; }
 
 .popup-likes { font-size: 0.75rem; color: var(--text-muted); }
 
@@ -685,21 +687,6 @@ button { font-family: inherit; }
 .auth-switch button { background: none; border: none; color: var(--accent-green); font-weight: 700; cursor: pointer; font-size: 0.85rem; }
 
 /* Ranking modal ----------------------------------------------------------------*/
-.ranking-tabs { display: flex; gap: 8px; margin-bottom: 1rem; }
-.ranking-tab {
-  flex: 1;
-  padding: 9px;
-  border-radius: var(--radius-md);
-  border: var(--card-border);
-  background: var(--bg-subtle);
-  color: var(--text-muted);
-  font-weight: 700;
-  font-size: 0.85rem;
-  cursor: pointer;
-  text-align: center;
-}
-.ranking-tab.active { background: var(--accent-green); border-color: var(--accent-green); color: #fff; }
-
 .ranking-row {
   display: flex;
   align-items: center;

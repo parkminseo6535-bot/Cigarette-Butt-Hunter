@@ -81,10 +81,10 @@
 
     <div class="filter-chips">
       <button class="chip active" data-filter="all">전체</button>
-      <button class="chip" data-filter="reported">신고됨</button>
-      <button class="chip" data-filter="in_progress">청소중</button>
-      <button class="chip" data-filter="cleaned">청소완료</button>
-      <button class="chip" data-filter="high">심각</button>
+      <button class="chip" data-filter="critical">매우 심각</button>
+      <button class="chip" data-filter="severe">심함</button>
+      <button class="chip" data-filter="medium">보통</button>
+      <button class="chip" data-filter="slight">약간</button>
     </div>
   </section>
 
@@ -144,9 +144,10 @@
           <div class="form-group">
             <label class="form-label">심각도</label>
             <select id="reportSeverity" class="form-select">
-              <option value="medium">보통</option>
-              <option value="high">심각</option>
-              <option value="low">낮음</option>
+              <option value="slight">약간 (1㎡당 9개 이하)</option>
+              <option value="medium" selected>보통 (1㎡당 10~29개)</option>
+              <option value="severe">심함 (1㎡당 30~49개)</option>
+              <option value="critical">매우 심각 (1㎡당 50개 이상)</option>
             </select>
           </div>
           <div class="form-group">
@@ -258,14 +259,10 @@
   <div id="rankingModal" class="modal-backdrop">
     <div class="modal-content" style="max-width: 420px;">
       <div class="modal-header">
-        <h3 class="modal-title"><i data-lucide="trophy" style="color: var(--accent-orange);"></i> 랭킹</h3>
+        <h3 class="modal-title"><i data-lucide="trophy" style="color: var(--accent-orange);"></i> 이달의 베스트 헌터</h3>
         <button id="btnCloseRankingModal" class="modal-close-btn">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="ranking-tabs">
-          <button id="tabMonthlyRanking" class="ranking-tab active">이달의 베스트 헌터</button>
-          <button id="tabReportRanking" class="ranking-tab">신고왕</button>
-        </div>
         <div id="rankingList"></div>
       </div>
     </div>

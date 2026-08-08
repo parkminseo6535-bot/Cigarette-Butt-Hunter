@@ -8,7 +8,7 @@ export const INITIAL_REPORTS = [
     latitude: 37.498095,
     longitude: 127.027610,
     address: "서울특별시 강남구 테헤란로1길 10",
-    severity: "high", // high, medium, low
+    severity: "critical", // critical, severe, medium, slight
     status: "reported", // reported, in_progress, cleaned
     userName: "클린강남지킴이",
     userAvatar: "CG",
@@ -28,7 +28,7 @@ export const INITIAL_REPORTS = [
     latitude: 37.550882,
     longitude: 126.923891,
     address: "서울특별시 마포구 와우산로 19길",
-    severity: "high",
+    severity: "severe",
     status: "in_progress",
     userName: "홍대클린헌터",
     userAvatar: "HD",
@@ -66,7 +66,7 @@ export const INITIAL_REPORTS = [
     latitude: 35.157810,
     longitude: 129.059280,
     address: "부산광역시 부산진구 중앙대로692번길",
-    severity: "high",
+    severity: "severe",
     status: "reported",
     userName: "갈매기헌터",
     userAvatar: "BS",
@@ -83,7 +83,7 @@ export const INITIAL_REPORTS = [
     latitude: 37.392640,
     longitude: 126.639520,
     address: "인천광역시 연수구 컨벤시아대로 160",
-    severity: "low",
+    severity: "slight",
     status: "reported",
     userName: "송도에코보이",
     userAvatar: "SD",

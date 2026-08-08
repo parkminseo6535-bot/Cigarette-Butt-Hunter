@@ -10,8 +10,7 @@ import {
   signIn,
   signOut,
   getCurrentUser,
-  fetchMonthlyLeaderboard,
-  fetchReportLeaderboard
+  fetchMonthlyLeaderboard
 } from './supabaseClient.js';
 import { compressImageToWebP } from './imageUtils.js';
 
@@ -24,7 +23,7 @@ const state = {
   feedLayout: 'grid',
   reports: [],
   filteredReports: [],
-  filterStatus: 'all',
+  filterSeverity: 'all',
   searchQuery: '',
   selectedReport: null,
   newReportPhotoBlob: null,
@@ -54,11 +53,7 @@ async function loadAndRenderData() {
 
 function applyFilters() {
   state.filteredReports = state.reports.filter(report => {
-    let statusMatch = true;
-    if (state.filterStatus === 'reported') statusMatch = report.status === 'reported';
-    else if (state.filterStatus === 'in_progress') statusMatch = report.status === 'in_progress';
-    else if (state.filterStatus === 'cleaned') statusMatch = report.status === 'cleaned';
-    else if (state.filterStatus === 'high') statusMatch = report.severity === 'high';
+    const severityMatch = state.filterSeverity === 'all' || report.severity === state.filterSeverity;
 
     let searchMatch = true;
     if (state.searchQuery.trim() !== '') {
@@ -68,7 +63,7 @@ function applyFilters() {
                     (report.description || '').toLowerCase().includes(q) ||
                     (report.userName || '').toLowerCase().includes(q);
     }
-    return statusMatch && searchMatch;
+    return severityMatch && searchMatch;
   });
 
   if (state.activeView === 'map') updateMapMarkers();
@@ -116,10 +111,7 @@ function updateMapMarkers() {
   state.mapMarkers = [];
 
   state.filteredReports.forEach(report => {
-    let pinClass = 'pin-medium';
-    if (report.status === 'cleaned') pinClass = 'pin-cleaned';
-    else if (report.severity === 'high') pinClass = 'pin-high';
-    else if (report.severity === 'low') pinClass = 'pin-low';
+    const pinClass = report.status === 'cleaned' ? 'pin-cleaned' : `pin-${report.severity}`;
 
     const customIcon = L.divIcon({
       className: 'custom-pin-wrapper',
@@ -130,7 +122,6 @@ function updateMapMarkers() {
     });
 
     const marker = L.marker([report.latitude, report.longitude], { icon: customIcon }).addTo(state.map);
-    const statusText = report.status === 'cleaned' ? '청소완료' : '신고됨';
 
     const popupHtml = `
       <div class="popup-card">
@@ -139,7 +130,7 @@ function updateMapMarkers() {
         </div>
         <div class="popup-body">
           <div class="popup-badge-row">
-            <span class="badge badge-${report.status}">${statusText}</span>
+            <span class="badge badge-${report.severity}">${severityLabel(report.severity)}</span>
             <span class="popup-likes">❤ ${report.likesCount || 0}</span>
           </div>
           <h4 class="popup-title">${escapeHtml(report.title)}</h4>
@@ -241,13 +232,12 @@ function renderFeedView() {
   if (state.feedLayout === 'grid') {
     let gridHtml = `<div class="insta-grid">`;
     state.filteredReports.forEach(report => {
-      const statusBadge = report.status === 'cleaned' ? '청소완료' : (report.severity === 'high' ? '심각' : '신고됨');
       gridHtml += `
         <div class="grid-card" onclick="window.openDetailModalFromId('${report.id}')">
           <img src="${report.imageUrl}" alt="${escapeHtml(report.title)}" loading="lazy" />
           <div class="grid-overlay">
             <div class="grid-overlay-top">
-              <span class="badge badge-${report.status}">${statusBadge}</span>
+              <span class="badge badge-${report.severity}">${severityLabel(report.severity)}</span>
             </div>
             <div class="grid-overlay-bottom">
               <h4 class="grid-title">${escapeHtml(report.title)}</h4>
@@ -278,7 +268,7 @@ function renderFeedView() {
                 <div class="user-info-location">${escapeHtml(report.address || '위치 정보 없음')}</div>
               </div>
             </div>
-            <span class="badge badge-${report.status}">${report.status === 'cleaned' ? '청소완료' : '신고됨'}</span>
+            <span class="badge badge-${report.severity}">${severityLabel(report.severity)}</span>
           </div>
 
           <div class="post-image-container" onclick="window.openDetailModalFromId('${report.id}')">
@@ -349,7 +339,7 @@ function setupEventListeners() {
     chip.addEventListener('click', (e) => {
       document.querySelectorAll('.chip[data-filter]').forEach(c => c.classList.remove('active'));
       e.currentTarget.classList.add('active');
-      state.filterStatus = e.currentTarget.dataset.filter;
+      state.filterSeverity = e.currentTarget.dataset.filter;
       applyFilters();
     });
   });
@@ -387,8 +377,6 @@ function setupEventListeners() {
   // 랭킹 모달
   document.getElementById('btnOpenRankingModal').addEventListener('click', openRankingModal);
   document.getElementById('btnCloseRankingModal').addEventListener('click', closeRankingModal);
-  document.getElementById('tabMonthlyRanking').addEventListener('click', () => switchRankingTab('monthly'));
-  document.getElementById('tabReportRanking').addEventListener('click', () => switchRankingTab('reports'));
 }
 
 /* ==========================================================================
@@ -445,7 +433,8 @@ async function handleReportFormSubmit(e) {
   const description = document.getElementById('reportDesc').value.trim();
   const address = document.getElementById('reportAddress').value.trim();
   const severity = document.getElementById('reportSeverity').value;
-  const guestName = document.getElementById('reportGuestName').value.trim();
+  const guestNameInput = document.getElementById('reportGuestName').value.trim();
+  const displayName = state.currentUser ? state.currentUser.username : (guestNameInput || null);
 
   if (!title) { alert('제목을 입력해주세요.'); return; }
   if (!state.newReportPhotoBlob) { alert('현장 사진을 첨부해주세요.'); return; }
@@ -464,7 +453,7 @@ async function handleReportFormSubmit(e) {
       latitude: state.newReportCoords.lat,
       longitude: state.newReportCoords.lng,
       userId: state.currentUser?.id || null,
-      guestName
+      displayName
     });
 
     closeReportModal();
@@ -652,23 +641,13 @@ function updateAuthUI() {
 /* ==========================================================================
    랭킹
    ========================================================================== */
-function openRankingModal() {
+async function openRankingModal() {
   document.getElementById('rankingModal').classList.add('open');
-  switchRankingTab('monthly');
-}
-
-function closeRankingModal() {
-  document.getElementById('rankingModal').classList.remove('open');
-}
-
-async function switchRankingTab(tab) {
-  document.getElementById('tabMonthlyRanking').classList.toggle('active', tab === 'monthly');
-  document.getElementById('tabReportRanking').classList.toggle('active', tab === 'reports');
 
   const list = document.getElementById('rankingList');
   list.innerHTML = `<p class="ranking-loading">불러오는 중...</p>`;
 
-  const data = tab === 'monthly' ? await fetchMonthlyLeaderboard() : await fetchReportLeaderboard();
+  const data = await fetchMonthlyLeaderboard();
 
   if (!data || data.length === 0) {
     list.innerHTML = `<p class="ranking-empty">아직 랭킹 데이터가 없습니다.</p>`;
@@ -679,14 +658,29 @@ async function switchRankingTab(tab) {
     <div class="ranking-row">
       <span class="ranking-rank ${idx < 3 ? 'top' : ''}">${idx + 1}</span>
       <span class="ranking-name">${escapeHtml(entry.username)}</span>
-      <span class="ranking-value">${tab === 'monthly' ? entry.points + 'P' : entry.reportsCount + '건'}</span>
+      <span class="ranking-value">${entry.points}P</span>
     </div>
   `).join('');
+}
+
+function closeRankingModal() {
+  document.getElementById('rankingModal').classList.remove('open');
 }
 
 /* ==========================================================================
    유틸
    ========================================================================== */
+const SEVERITY_LABELS = {
+  critical: '매우 심각',
+  severe: '심함',
+  medium: '보통',
+  slight: '약간'
+};
+
+function severityLabel(severity) {
+  return SEVERITY_LABELS[severity] || SEVERITY_LABELS.medium;
+}
+
 function avatarInitials(name) {
   return (name || '헌터').trim().slice(0, 2).toUpperCase();
 }

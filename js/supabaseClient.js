@@ -170,7 +170,7 @@ function saveLocalReports(reports) {
   localStorage.setItem(STORAGE_KEY_REPORTS, JSON.stringify(reports));
 }
 
-export async function createReport({ title, description, address, severity, imageBlob, latitude, longitude, userId, guestName }) {
+export async function createReport({ title, description, address, severity, imageBlob, latitude, longitude, userId, displayName }) {
   if (client) {
     const path = `${userId || 'guest'}/${Date.now()}.webp`;
     const { error: uploadError } = await client.storage.from('report-photos').upload(path, imageBlob, {
@@ -184,7 +184,7 @@ export async function createReport({ title, description, address, severity, imag
       .from('reports')
       .insert([{
         user_id: userId || null,
-        guest_name: userId ? null : (guestName || null),
+        guest_name: displayName || null,
         title,
         description: description || '',
         image_url: publicUrlData.publicUrl,
@@ -217,7 +217,7 @@ export async function createReport({ title, description, address, severity, imag
     address: address || '',
     severity: severity || 'medium',
     status: 'reported',
-    userName: userId ? null : (guestName || null),
+    userName: displayName || null,
     likesCount: 0,
     cleanupVotes: 0,
     createdAt: new Date().toISOString(),
@@ -339,30 +339,6 @@ export async function fetchMonthlyLeaderboard() {
   return Object.entries(totals)
     .map(([username, points]) => ({ username, points }))
     .sort((a, b) => b.points - a.points)
-    .slice(0, 10);
-}
-
-export async function fetchReportLeaderboard() {
-  if (client) {
-    const { data, error } = await client
-      .from('profiles')
-      .select('username, reports_count')
-      .order('reports_count', { ascending: false })
-      .limit(10);
-
-    if (error || !data) return [];
-    return data.filter(p => p.reports_count > 0).map(p => ({ username: p.username, reportsCount: p.reports_count }));
-  }
-
-  const reports = getLocalReports();
-  const totals = {};
-  reports.forEach(r => {
-    if (r.userName) totals[r.userName] = (totals[r.userName] || 0) + 1;
-  });
-
-  return Object.entries(totals)
-    .map(([username, reportsCount]) => ({ username, reportsCount }))
-    .sort((a, b) => b.reportsCount - a.reportsCount)
     .slice(0, 10);
 }
 
