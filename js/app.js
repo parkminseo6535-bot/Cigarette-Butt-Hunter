@@ -432,7 +432,7 @@ async function handlePhotosSelected(e) {
 
   for (const file of files) {
     const id = 'photo-' + (++photoItemSeq);
-    const item = { id, blob: null, previewUrl: null, coords: null, address: '사진 처리 중...' };
+    const item = { id, blob: null, previewUrl: null, coords: null, address: '사진 처리 중...', ready: false };
     state.photoItems.push(item);
     if (!state.activePhotoId) state.activePhotoId = id;
     renderPhotoThumbs();
@@ -460,12 +460,14 @@ async function handlePhotosSelected(e) {
           item.address = await reverseGeocode(item.coords.lat, item.coords.lng);
         } else {
           item.coords = { ...DEFAULT_CENTER };
-          item.address = '위치 정보 없음 · 지도를 눌러 지정하세요';
+          item.address = '위치 정보 없음';
         }
       }
+      item.ready = true;
     } catch (err) {
       item.coords = item.coords || { ...DEFAULT_CENTER };
       item.address = '사진 처리 실패';
+      item.ready = false;
     }
 
     renderPhotoThumbs();
@@ -549,10 +551,9 @@ async function handleReportFormSubmit(e) {
   const guestNameInput = document.getElementById('reportGuestName').value.trim();
   const displayName = state.currentUser ? state.currentUser.username : (guestNameInput || null);
 
-  if (!title) { alert('제목을 입력해주세요.'); return; }
   if (state.photoItems.length === 0) { alert('현장 사진을 1장 이상 첨부해주세요.'); return; }
-  if (state.photoItems.some(p => !p.blob || !p.coords)) {
-    alert('사진 처리가 아직 끝나지 않았습니다. 잠시 후 다시 시도해주세요.');
+  if (state.photoItems.some(p => !p.ready || !p.blob || !p.coords)) {
+    alert('사진 위치 확인이 아직 끝나지 않았습니다. 잠시 후 다시 시도해주세요.');
     return;
   }
 
@@ -567,7 +568,7 @@ async function handleReportFormSubmit(e) {
       submitBtn.innerText = total > 1 ? `등록 중... (${i + 1}/${total})` : '등록 중...';
       const item = state.photoItems[i];
       await createReport({
-        title,
+        title: title || item.address || '위치 정보 없음',
         description,
         address: item.address,
         severity,

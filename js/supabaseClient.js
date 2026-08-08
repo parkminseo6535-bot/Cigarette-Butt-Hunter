@@ -83,10 +83,10 @@ export async function getCurrentUser() {
     if (!user) return null;
 
     let username = user.email ? user.email.replace(AUTH_EMAIL_DOMAIN, '') : '헌터';
-    const { data: profile } = await client.from('profiles').select('username, points, reports_count').eq('id', user.id).maybeSingle();
+    const { data: profile } = await client.from('profiles').select('username, points, reports_count, is_admin').eq('id', user.id).maybeSingle();
     if (profile) username = profile.username;
 
-    return { id: user.id, username, points: profile?.points || 0, reportsCount: profile?.reports_count || 0 };
+    return { id: user.id, username, points: profile?.points || 0, reportsCount: profile?.reports_count || 0, isAdmin: profile?.is_admin || false };
   }
 
   const stored = localStorage.getItem(STORAGE_KEY_SESSION);
@@ -334,4 +334,43 @@ function formatRelativeTime(isoString) {
   if (hours < 24) return `${hours}시간 전`;
   const days = Math.floor(hours / 24);
   return `${days}일 전`;
+}
+
+/* ============================================================================
+   관리자 (admin.html 전용) - anon key + is_admin RLS 정책으로 동작, 서버 불필요
+   ============================================================================ */
+export async function adminFetchAllReports() {
+  if (!client) return [];
+  const { data, error } = await client
+    .from('reports')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(300);
+  if (error || !data) return [];
+  return data;
+}
+
+export async function adminUpdateReport(id, { title, description, severity, address }) {
+  if (!client) throw new Error('Supabase가 연동되어 있지 않습니다.');
+  const { error } = await client
+    .from('reports')
+    .update({ title, description, severity, address })
+    .eq('id', id);
+  if (error) throw new Error('수정에 실패했습니다: ' + error.message);
+}
+
+export async function adminDeleteReport(id, imageUrl) {
+  if (!client) throw new Error('Supabase가 연동되어 있지 않습니다.');
+
+  if (imageUrl) {
+    const marker = '/report-photos/';
+    const idx = imageUrl.indexOf(marker);
+    if (idx !== -1) {
+      const objectPath = imageUrl.slice(idx + marker.length);
+      await client.storage.from('report-photos').remove([objectPath]).catch(() => {});
+    }
+  }
+
+  const { error } = await client.from('reports').delete().eq('id', id);
+  if (error) throw new Error('삭제에 실패했습니다: ' + error.message);
 }

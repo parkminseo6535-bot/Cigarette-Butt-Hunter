@@ -11,8 +11,10 @@
 -- 3) 좌측 메뉴 SQL Editor에서 이 파일 전체를 붙여넣고 Run 실행
 -- 4) 좌측 메뉴 Project Settings > API 에서 Project URL / anon public key를
 --    복사해 js/config.js 에 붙여넣기
--- 5) 같은 화면의 service_role (secret) key를 복사해 admin_config.php 에 붙여넣기
---    (관리자 페이지 admin.php에서 신고 수정/삭제에 사용됩니다. 절대 js/config.js에는 넣지 마세요)
+-- 5) 사이트에서 본인 계정으로 회원가입한 뒤, SQL Editor에서 아래를 실행해 관리자 권한 부여
+--      update public.profiles set is_admin = true where username = '본인아이디';
+--    이후 admin.html에서 그 아이디/비밀번호로 로그인하면 신고 수정/삭제가 가능합니다.
+--    (admin.html은 서버 실행 없이 GitHub Pages 등 순수 정적 호스팅에서도 동작합니다)
 -- ============================================================================
 
 -- 1. 회원 프로필 --------------------------------------------------------------
@@ -21,6 +23,7 @@ create table public.profiles (
   username text not null unique,
   points integer not null default 0,
   reports_count integer not null default 0,
+  is_admin boolean not null default false, -- true인 계정만 admin.html에서 신고 수정/삭제 가능
   created_at timestamptz not null default now()
 );
 
@@ -49,7 +52,11 @@ create table public.reports (
 alter table public.reports enable row level security;
 create policy "reports_select_public" on public.reports for select using (true);
 create policy "reports_insert_anyone" on public.reports for insert with check (true);
--- 수정/삭제는 공개 정책을 두지 않습니다. admin.php가 service_role 키로 RLS를 우회해 처리합니다.
+-- 수정/삭제는 is_admin = true인 로그인 계정만 가능 (admin.html이 anon key + 이 정책으로 동작)
+create policy "reports_update_admin" on public.reports for update
+  using (exists (select 1 from public.profiles where id = auth.uid() and is_admin = true));
+create policy "reports_delete_admin" on public.reports for delete
+  using (exists (select 1 from public.profiles where id = auth.uid() and is_admin = true));
 
 -- 3. 댓글 ----------------------------------------------------------------------
 create table public.comments (
@@ -197,3 +204,9 @@ create policy "report_photos_public_read"
 create policy "report_photos_anyone_upload"
   on storage.objects for insert
   with check (bucket_id = 'report-photos');
+
+create policy "report_photos_admin_delete"
+  on storage.objects for delete
+  using (bucket_id = 'report-photos' and exists (
+    select 1 from public.profiles where id = auth.uid() and is_admin = true
+  ));
