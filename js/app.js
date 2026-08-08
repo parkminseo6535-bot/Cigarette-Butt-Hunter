@@ -4,7 +4,6 @@ import {
   createReport,
   toggleLikeReport,
   voteCleanupReport,
-  updateReportStatus,
   addCommentToReport,
   signUp,
   signIn,
@@ -19,6 +18,8 @@ const LIGHT_TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{
 const LIGHT_TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.9780 }; // 서울시청 기본 좌표
 
+let photoItemSeq = 0;
+
 const state = {
   activeView: 'map',
   feedLayout: 'grid',
@@ -27,8 +28,8 @@ const state = {
   filterSeverity: 'all',
   searchQuery: '',
   selectedReport: null,
-  newReportPhotoBlob: null,
-  newReportCoords: { ...DEFAULT_CENTER },
+  photoItems: [], // { id, blob, previewUrl, coords: {lat,lng}, address }
+  activePhotoId: null,
   map: null,
   mapMarkers: [],
   pickerMap: null,
@@ -73,10 +74,7 @@ function applyFilters() {
 
 function renderStats() {
   const total = state.reports.length;
-  const cleaned = state.reports.filter(r => r.status === 'cleaned').length;
-
   document.getElementById('statTotal').innerText = total + '건';
-  document.getElementById('statCleaned').innerText = cleaned + '곳';
 
   const myPointsEl = document.getElementById('statMyPoints');
   const myPointsWrap = document.getElementById('statMyPointsWrap');
@@ -112,7 +110,7 @@ function updateMapMarkers() {
   state.mapMarkers = [];
 
   state.filteredReports.forEach(report => {
-    const pinClass = report.status === 'cleaned' ? 'pin-cleaned' : `pin-${report.severity}`;
+    const pinClass = `pin-${report.severity}`;
 
     const customIcon = L.divIcon({
       className: 'custom-pin-wrapper',
@@ -150,36 +148,39 @@ function initPickerMap() {
   const container = document.getElementById('pickerMap');
   if (!container) return;
 
+  const coords = getActivePhotoItem()?.coords || DEFAULT_CENTER;
+
   if (!state.pickerMap) {
-    state.pickerMap = L.map('pickerMap', { zoomControl: false }).setView([state.newReportCoords.lat, state.newReportCoords.lng], 15);
+    state.pickerMap = L.map('pickerMap', { zoomControl: false }).setView([coords.lat, coords.lng], 15);
     L.tileLayer(LIGHT_TILE_URL, { maxZoom: 19, attribution: LIGHT_TILE_ATTRIBUTION }).addTo(state.pickerMap);
-    state.pickerMarker = L.marker([state.newReportCoords.lat, state.newReportCoords.lng], { draggable: true }).addTo(state.pickerMap);
+    state.pickerMarker = L.marker([coords.lat, coords.lng], { draggable: true }).addTo(state.pickerMap);
 
     state.pickerMarker.on('dragend', (e) => {
       const latlng = e.target.getLatLng();
-      state.newReportCoords = { lat: latlng.lat, lng: latlng.lng };
-      updateAddressField(latlng.lat, latlng.lng);
+      setActivePhotoLocation(latlng.lat, latlng.lng);
     });
 
     state.pickerMap.on('click', (e) => {
       state.pickerMarker.setLatLng(e.latlng);
-      state.newReportCoords = { lat: e.latlng.lat, lng: e.latlng.lng };
-      updateAddressField(e.latlng.lat, e.latlng.lng);
+      setActivePhotoLocation(e.latlng.lat, e.latlng.lng);
     });
   } else {
-    state.pickerMap.setView([state.newReportCoords.lat, state.newReportCoords.lng], 15);
-    state.pickerMarker.setLatLng([state.newReportCoords.lat, state.newReportCoords.lng]);
+    state.pickerMap.setView([coords.lat, coords.lng], 15);
+    state.pickerMarker.setLatLng([coords.lat, coords.lng]);
     state.pickerMap.invalidateSize();
   }
 }
 
-function movePickerTo(lat, lng, zoom = 16) {
-  state.newReportCoords = { lat, lng };
-  if (state.pickerMap && state.pickerMarker) {
-    state.pickerMap.setView([lat, lng], zoom);
-    state.pickerMarker.setLatLng([lat, lng]);
-  }
-  updateAddressField(lat, lng);
+// 지도 위 클릭/드래그 시 "선택된 사진"의 좌표 + 주소를 갱신
+async function setActivePhotoLocation(lat, lng) {
+  const item = getActivePhotoItem();
+  if (!item) return;
+  item.coords = { lat, lng };
+  item.address = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  document.getElementById('reportAddress').value = item.address;
+  item.address = await reverseGeocode(lat, lng);
+  document.getElementById('reportAddress').value = item.address;
+  renderPhotoThumbs();
 }
 
 function setLocationHint(message, tone = 'neutral') {
@@ -195,11 +196,20 @@ function getCurrentGPSLocation() {
     alert('브라우저가 GPS 조회를 지원하지 않습니다.');
     return;
   }
+  if (!getActivePhotoItem()) {
+    alert('먼저 사진을 추가해주세요.');
+    return;
+  }
   const btn = document.getElementById('btnAutoGPS');
   btn.innerText = '위치 확인 중...';
   navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      movePickerTo(pos.coords.latitude, pos.coords.longitude, 16);
+    async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      if (state.pickerMap && state.pickerMarker) {
+        state.pickerMap.setView([latitude, longitude], 16);
+        state.pickerMarker.setLatLng([latitude, longitude]);
+      }
+      await setActivePhotoLocation(latitude, longitude);
       setLocationHint('현재 위치를 불러왔어요 · 지도를 눌러 수정할 수 있어요', 'success');
       btn.innerText = '현재 위치 가져오기';
     },
@@ -210,17 +220,16 @@ function getCurrentGPSLocation() {
   );
 }
 
-async function updateAddressField(lat, lng) {
-  document.getElementById('reportAddress').value = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+// 좌표 → 한글 주소 역지오코딩 (Nominatim, 무료)
+async function reverseGeocode(lat, lng) {
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=ko`);
     const data = await res.json();
-    if (data && data.display_name) {
-      document.getElementById('reportAddress').value = data.display_name;
-    }
+    if (data && data.display_name) return data.display_name;
   } catch (e) {
     // 좌표 표시로 대체됨
   }
+  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
 
 /* ==========================================================================
@@ -368,16 +377,14 @@ function setupEventListeners() {
   document.getElementById('btnCancelReport').addEventListener('click', closeReportModal);
 
   const photoInput = document.getElementById('photoInput');
-  const photoUploadBox = document.getElementById('photoUploadBox');
-  photoUploadBox.addEventListener('click', () => photoInput.click());
-  photoInput.addEventListener('change', handlePhotoSelected);
+  document.getElementById('btnAddPhoto').addEventListener('click', () => photoInput.click());
+  photoInput.addEventListener('change', handlePhotosSelected);
 
   document.getElementById('btnAutoGPS').addEventListener('click', getCurrentGPSLocation);
   document.getElementById('reportForm').addEventListener('submit', handleReportFormSubmit);
 
   // 상세 모달
   document.getElementById('btnCloseDetailModal').addEventListener('click', closeDetailModal);
-  document.getElementById('btnMarkCleaned').addEventListener('click', handleMarkCleanedClick);
 
   // 인증 모달
   document.getElementById('btnOpenAuthModal').addEventListener('click', () => openAuthModal('login'));
@@ -418,35 +425,119 @@ function updateReporterFieldUI() {
   }
 }
 
-async function handlePhotoSelected(e) {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
+// 사진 여러 장 선택 → 각각 압축 + EXIF 위치 자동 인식
+async function handlePhotosSelected(e) {
+  const files = Array.from(e.target.files || []);
+  e.target.value = ''; // 같은 파일을 다시 선택할 수 있도록 초기화
 
-  const preview = document.getElementById('uploadPreview');
-  const placeholder = document.getElementById('uploadPlaceholder');
-  const placeholderText = document.getElementById('uploadPlaceholderText');
-  placeholderText.innerText = '사진 압축 중...';
+  for (const file of files) {
+    const id = 'photo-' + (++photoItemSeq);
+    const item = { id, blob: null, previewUrl: null, coords: null, address: '사진 처리 중...' };
+    state.photoItems.push(item);
+    if (!state.activePhotoId) state.activePhotoId = id;
+    renderPhotoThumbs();
+    if (state.activePhotoId === id) syncPickerToActivePhoto();
 
-  try {
-    const [blob, gps] = await Promise.all([
-      compressImageToWebP(file, { maxWidth: 600, quality: 0.5 }),
-      extractGpsFromImage(file)
-    ]);
-    state.newReportPhotoBlob = blob;
-    preview.src = URL.createObjectURL(blob);
-    preview.style.display = 'block';
-    placeholder.style.display = 'none';
+    try {
+      const [blob, gps] = await Promise.all([
+        compressImageToWebP(file, { maxWidth: 600, quality: 0.5 }),
+        extractGpsFromImage(file)
+      ]);
+      item.blob = blob;
+      item.previewUrl = URL.createObjectURL(blob);
 
-    if (gps) {
-      movePickerTo(gps.lat, gps.lng, 17);
-      setLocationHint('사진 속 위치 정보를 불러왔어요 · 지도를 눌러 수정할 수 있어요', 'success');
-    } else {
-      setLocationHint('사진에 위치 정보가 없어요 · 지도를 눌러 위치를 지정해주세요');
+      if (gps) {
+        item.coords = gps;
+        item.address = '위치 확인 중...';
+        renderPhotoThumbs();
+        item.address = await reverseGeocode(gps.lat, gps.lng);
+      } else {
+        const previousWithCoords = state.photoItems.find(p => p.id !== id && p.coords);
+        if (previousWithCoords) {
+          item.coords = { ...previousWithCoords.coords };
+          item.address = '위치 확인 중...';
+          renderPhotoThumbs();
+          item.address = await reverseGeocode(item.coords.lat, item.coords.lng);
+        } else {
+          item.coords = { ...DEFAULT_CENTER };
+          item.address = '위치 정보 없음 · 지도를 눌러 지정하세요';
+        }
+      }
+    } catch (err) {
+      item.coords = item.coords || { ...DEFAULT_CENTER };
+      item.address = '사진 처리 실패';
     }
-  } catch (err) {
-    alert('사진을 처리하지 못했습니다. 다른 사진을 선택해주세요.');
-    placeholderText.innerText = '터치하여 사진 업로드';
+
+    renderPhotoThumbs();
+    if (state.activePhotoId === id) syncPickerToActivePhoto();
   }
+}
+
+function getActivePhotoItem() {
+  return state.photoItems.find(p => p.id === state.activePhotoId) || null;
+}
+
+function setActivePhoto(id) {
+  state.activePhotoId = id;
+  renderPhotoThumbs();
+  syncPickerToActivePhoto();
+}
+
+function removePhotoItem(id) {
+  const idx = state.photoItems.findIndex(p => p.id === id);
+  if (idx === -1) return;
+  const [removed] = state.photoItems.splice(idx, 1);
+  if (removed.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+
+  if (state.activePhotoId === id) {
+    state.activePhotoId = state.photoItems.length > 0 ? state.photoItems[0].id : null;
+  }
+  renderPhotoThumbs();
+  syncPickerToActivePhoto();
+}
+
+function syncPickerToActivePhoto() {
+  const item = getActivePhotoItem();
+  const coords = item?.coords || DEFAULT_CENTER;
+  if (state.pickerMap && state.pickerMarker) {
+    state.pickerMap.setView([coords.lat, coords.lng], item ? 16 : 13);
+    state.pickerMarker.setLatLng([coords.lat, coords.lng]);
+  }
+  document.getElementById('reportAddress').value = item?.address || '';
+}
+
+function renderPhotoThumbs() {
+  const grid = document.getElementById('photoThumbGrid');
+  const addTile = document.getElementById('btnAddPhoto');
+  if (!grid || !addTile) return;
+
+  grid.querySelectorAll('.photo-thumb').forEach(el => el.remove());
+
+  state.photoItems.forEach((item, idx) => {
+    const div = document.createElement('div');
+    div.className = 'photo-thumb' + (item.id === state.activePhotoId ? ' active' : '');
+    div.innerHTML = `
+      ${item.previewUrl ? `<img src="${item.previewUrl}" alt="사진 ${idx + 1}" />` : `<div class="photo-thumb-loading">처리중</div>`}
+      <button type="button" class="photo-thumb-remove" aria-label="삭제">&times;</button>
+      <span class="photo-thumb-address">${escapeHtml(item.address || '')}</span>
+    `;
+    div.addEventListener('click', () => setActivePhoto(item.id));
+    div.querySelector('.photo-thumb-remove').addEventListener('click', (e) => {
+      e.stopPropagation();
+      removePhotoItem(item.id);
+    });
+    grid.insertBefore(div, addTile);
+  });
+
+  const total = state.photoItems.length;
+  const label = document.getElementById('activePhotoLabel');
+  if (label) {
+    const idx = state.photoItems.findIndex(p => p.id === state.activePhotoId);
+    label.innerText = total > 1 ? `· 선택한 사진 위치 (${idx + 1}/${total})` : '';
+  }
+
+  const submitBtn = document.getElementById('btnSubmitReport');
+  if (submitBtn) submitBtn.innerText = total > 1 ? `${total}건 한번에 등록하기` : '신고 등록하기';
 }
 
 async function handleReportFormSubmit(e) {
@@ -454,30 +545,40 @@ async function handleReportFormSubmit(e) {
 
   const title = document.getElementById('reportTitle').value.trim();
   const description = document.getElementById('reportDesc').value.trim();
-  const address = document.getElementById('reportAddress').value.trim();
   const severity = document.getElementById('reportSeverity').value;
   const guestNameInput = document.getElementById('reportGuestName').value.trim();
   const displayName = state.currentUser ? state.currentUser.username : (guestNameInput || null);
 
   if (!title) { alert('제목을 입력해주세요.'); return; }
-  if (!state.newReportPhotoBlob) { alert('현장 사진을 첨부해주세요.'); return; }
+  if (state.photoItems.length === 0) { alert('현장 사진을 1장 이상 첨부해주세요.'); return; }
+  if (state.photoItems.some(p => !p.blob || !p.coords)) {
+    alert('사진 처리가 아직 끝나지 않았습니다. 잠시 후 다시 시도해주세요.');
+    return;
+  }
 
   const submitBtn = document.getElementById('btnSubmitReport');
-  submitBtn.innerText = '등록 중...';
   submitBtn.disabled = true;
 
+  const total = state.photoItems.length;
+  let successCount = 0;
+
   try {
-    await createReport({
-      title,
-      description,
-      address,
-      severity,
-      imageBlob: state.newReportPhotoBlob,
-      latitude: state.newReportCoords.lat,
-      longitude: state.newReportCoords.lng,
-      userId: state.currentUser?.id || null,
-      displayName
-    });
+    for (let i = 0; i < total; i++) {
+      submitBtn.innerText = total > 1 ? `등록 중... (${i + 1}/${total})` : '등록 중...';
+      const item = state.photoItems[i];
+      await createReport({
+        title,
+        description,
+        address: item.address,
+        severity,
+        imageBlob: item.blob,
+        latitude: item.coords.lat,
+        longitude: item.coords.lng,
+        userId: state.currentUser?.id || null,
+        displayName
+      });
+      successCount++;
+    }
 
     closeReportModal();
     resetReportForm();
@@ -486,19 +587,21 @@ async function handleReportFormSubmit(e) {
     await loadAndRenderData();
     updateAuthUI();
   } catch (err) {
-    alert(err.message || '신고 등록 중 오류가 발생했습니다.');
+    alert((err.message || '신고 등록 중 오류가 발생했습니다.') + ` (${successCount}/${total}건 등록됨)`);
+    await loadAndRenderData();
   }
 
-  submitBtn.innerText = '신고 등록하기';
   submitBtn.disabled = false;
+  renderPhotoThumbs();
 }
 
 function resetReportForm() {
   document.getElementById('reportForm').reset();
-  document.getElementById('uploadPreview').style.display = 'none';
-  document.getElementById('uploadPlaceholder').style.display = 'block';
-  document.getElementById('uploadPlaceholderText').innerText = '터치하여 사진 업로드';
-  state.newReportPhotoBlob = null;
+  state.photoItems.forEach(p => { if (p.previewUrl) URL.revokeObjectURL(p.previewUrl); });
+  state.photoItems = [];
+  state.activePhotoId = null;
+  renderPhotoThumbs();
+  document.getElementById('reportAddress').value = '';
   setLocationHint('');
 }
 
@@ -525,18 +628,6 @@ window.handleCleanupVoteClick = async (id) => {
   renderStats();
 };
 
-async function handleMarkCleanedClick() {
-  if (!state.selectedReport) return;
-  state.reports = await updateReportStatus(state.selectedReport.id, 'cleaned');
-  const updated = state.reports.find(r => r.id === state.selectedReport.id);
-  if (updated) {
-    state.selectedReport = updated;
-    openDetailModal(updated);
-  }
-  applyFilters();
-  renderStats();
-}
-
 function openDetailModal(report) {
   const modal = document.getElementById('detailModal');
   const displayName = report.userName || '익명 헌터';
@@ -550,9 +641,6 @@ function openDetailModal(report) {
   document.getElementById('detailTime').innerText = formatTimeAgo(report.createdAt);
   document.getElementById('detailLikesCount').innerText = report.likesCount || 0;
   document.getElementById('detailCleanupVotes').innerText = report.cleanupVotes || 0;
-
-  const markCleanedBtn = document.getElementById('btnMarkCleaned');
-  markCleanedBtn.style.display = report.status === 'cleaned' ? 'none' : 'inline-flex';
 
   renderCommentsList(report.comments || []);
 

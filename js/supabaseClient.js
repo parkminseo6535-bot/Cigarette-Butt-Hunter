@@ -139,7 +139,6 @@ export async function fetchReports() {
       longitude: parseFloat(item.longitude),
       address: item.address,
       severity: item.severity || 'medium',
-      status: item.status || 'reported',
       userName: item.guest_name || null,
       likesCount: item.likes_count || 0,
       cleanupVotes: item.cleanup_votes || 0,
@@ -191,8 +190,7 @@ export async function createReport({ title, description, address, severity, imag
         latitude,
         longitude,
         address: address || '',
-        severity: severity || 'medium',
-        status: 'reported'
+        severity: severity || 'medium'
       }])
       .select()
       .single();
@@ -216,7 +214,6 @@ export async function createReport({ title, description, address, severity, imag
     longitude,
     address: address || '',
     severity: severity || 'medium',
-    status: 'reported',
     userName: displayName || null,
     likesCount: 0,
     cleanupVotes: 0,
@@ -251,20 +248,6 @@ export async function voteCleanupReport(reportId, userId) {
   const reports = getLocalReports();
   const item = reports.find(r => r.id === reportId);
   if (item) item.cleanupVotes = (item.cleanupVotes || 0) + 1;
-  saveLocalReports(reports);
-  return reports;
-}
-
-export async function updateReportStatus(reportId, status) {
-  if (client) {
-    const { error } = await client.from('reports').update({ status }).eq('id', reportId);
-    if (error) console.warn('status update failed:', error);
-    return fetchReports();
-  }
-
-  const reports = getLocalReports();
-  const item = reports.find(r => r.id === reportId);
-  if (item) item.status = status;
   saveLocalReports(reports);
   return reports;
 }

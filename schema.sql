@@ -11,6 +11,8 @@
 -- 3) 좌측 메뉴 SQL Editor에서 이 파일 전체를 붙여넣고 Run 실행
 -- 4) 좌측 메뉴 Project Settings > API 에서 Project URL / anon public key를
 --    복사해 js/config.js 에 붙여넣기
+-- 5) 같은 화면의 service_role (secret) key를 복사해 admin_config.php 에 붙여넣기
+--    (관리자 페이지 admin.php에서 신고 수정/삭제에 사용됩니다. 절대 js/config.js에는 넣지 마세요)
 -- ============================================================================
 
 -- 1. 회원 프로필 --------------------------------------------------------------
@@ -31,15 +33,14 @@ create policy "profiles_update_self" on public.profiles for update using (auth.u
 create table public.reports (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles(id) on delete set null,
-  guest_name text,
+  guest_name text, -- 화면에 표시되는 제보자 이름: 회원은 아이디, 비회원은 입력한 닉네임이 저장됨
   title text not null,
   description text,
   image_url text not null,
   latitude double precision not null,
   longitude double precision not null,
   address text,
-  severity text not null default 'medium',
-  status text not null default 'reported',
+  severity text not null default 'medium', -- 'critical'(매우 심각, 1㎡당 50개+) | 'severe'(심함, 30~49개) | 'medium'(보통, 10~29개) | 'slight'(약간, 9개 이하)
   likes_count integer not null default 0,
   cleanup_votes integer not null default 0,
   created_at timestamptz not null default now()
@@ -48,7 +49,7 @@ create table public.reports (
 alter table public.reports enable row level security;
 create policy "reports_select_public" on public.reports for select using (true);
 create policy "reports_insert_anyone" on public.reports for insert with check (true);
-create policy "reports_update_anyone" on public.reports for update using (true);
+-- 수정/삭제는 공개 정책을 두지 않습니다. admin.php가 service_role 키로 RLS를 우회해 처리합니다.
 
 -- 3. 댓글 ----------------------------------------------------------------------
 create table public.comments (

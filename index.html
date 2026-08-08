@@ -64,7 +64,6 @@
   <section class="stats-banner">
     <div class="stats-group">
       <div class="stat-item"><span>총 신고</span><span id="statTotal" class="stat-value">0건</span></div>
-      <div class="stat-item"><span>정화 완료</span><span id="statCleaned" class="stat-value stat-highlight">0곳</span></div>
     </div>
     <div id="statMyPointsWrap" class="stat-item" style="display:none;">
       <span>내 포인트</span>
@@ -119,15 +118,15 @@
       <form id="reportForm" class="modal-body">
 
         <div class="form-group">
-          <label class="form-label">현장 사진</label>
-          <div id="photoUploadBox" class="photo-upload-box">
-            <input type="file" id="photoInput" accept="image/*" style="display: none;" />
-            <img id="uploadPreview" class="upload-preview" style="display: none;" alt="미리보기" />
-            <div id="uploadPlaceholder">
-              <i data-lucide="image-plus" style="width: 34px; height: 34px; color: var(--text-dim); margin-bottom: 8px;"></i>
-              <p id="uploadPlaceholderText" class="upload-placeholder-text">터치하여 사진 업로드</p>
-            </div>
+          <label class="form-label">현장 사진 (여러 장 가능)</label>
+          <input type="file" id="photoInput" accept="image/*" multiple style="display: none;" />
+          <div id="photoThumbGrid" class="photo-thumb-grid">
+            <button type="button" id="btnAddPhoto" class="photo-add-tile">
+              <i data-lucide="image-plus"></i>
+              <span>사진 추가</span>
+            </button>
           </div>
+          <p class="photo-hint">사진을 여러 장 올리면 각 사진의 위치를 자동으로 인식해 한 번에 여러 건으로 등록돼요.</p>
         </div>
 
         <div class="form-group">
@@ -163,7 +162,7 @@
 
         <div class="form-group">
           <div style="display: flex; align-items: center; justify-content: space-between;">
-            <label class="form-label" style="margin-bottom: 0;">발생 위치</label>
+            <label class="form-label" style="margin-bottom: 0;">발생 위치 <span id="activePhotoLabel" style="font-weight: 500; color: var(--text-dim);"></span></label>
             <button type="button" id="btnAutoGPS" class="gps-btn"><i data-lucide="locate-fixed" style="width:13px;height:13px;"></i> 현재 위치 가져오기</button>
           </div>
           <div class="mini-map-container"><div id="pickerMap"></div></div>
@@ -208,8 +207,6 @@
                 <span class="likes-stat">❤ 공감 <span id="detailLikesCount">0</span></span>
                 <span class="cleanup-stat">🧹 청소요청 <span id="detailCleanupVotes">0</span></span>
               </div>
-
-              <button id="btnMarkCleaned" class="mark-cleaned-btn"><i data-lucide="check-circle" style="width:14px;height:14px;"></i> 청소 완료로 표시</button>
 
               <h4 class="comments-heading">댓글</h4>
               <div id="detailCommentsList"></div>
