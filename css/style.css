@@ -423,6 +423,18 @@ button { font-family: inherit; }
 .grid-title { font-size: 0.92rem; font-weight: 700; margin-bottom: 4px; }
 .grid-stats { display: flex; align-items: center; gap: 10px; font-size: 0.78rem; color: rgba(255, 255, 255, 0.9); }
 
+.grid-like-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.78rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+.grid-like-btn:hover { color: #ef4444; transform: scale(1.1); }
+
 .insta-feed { display: flex; flex-direction: column; gap: 1.5rem; max-width: 560px; margin: 0 auto; }
 
 .post-card {
@@ -706,8 +718,19 @@ button { font-family: inherit; }
   font-size: 0.85rem;
   font-weight: 700;
 }
-.detail-action-stats .likes-stat { color: var(--accent-emerald); }
-.detail-action-stats .cleanup-stat { color: var(--accent-orange); }
+.like-stat-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-emerald);
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.like-stat-btn:hover { transform: scale(1.06); }
+.like-stat-btn:active { transform: scale(0.96); }
 
 .comments-heading { font-size: 0.88rem; font-weight: 700; margin-bottom: 8px; color: var(--text-main); }
 #detailCommentsList { max-height: 150px; overflow-y: auto; margin-bottom: 12px; }

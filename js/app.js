@@ -3,7 +3,6 @@ import {
   fetchReports,
   createReport,
   toggleLikeReport,
-  voteCleanupReport,
   addCommentToReport,
   signUp,
   signIn,
@@ -264,8 +263,7 @@ function renderFeedView() {
             <div class="grid-overlay-bottom">
               <h4 class="grid-title">${escapeHtml(report.title)}</h4>
               <div class="grid-stats">
-                <span>❤ ${report.likesCount || 0}</span>
-                <span>🧹 ${report.cleanupVotes || 0}</span>
+                <button class="grid-like-btn" onclick="event.stopPropagation(); window.handleLikeClick('${report.id}')">❤ ${report.likesCount || 0}</button>
                 <span>💬 ${(report.comments || []).length}</span>
               </div>
             </div>
@@ -301,7 +299,6 @@ function renderFeedView() {
             <div class="action-bar">
               <div class="action-btns-left">
                 <button class="icon-action-btn" onclick="window.handleLikeClick('${report.id}')">❤ <span>${report.likesCount || 0}</span></button>
-                <button class="icon-action-btn" onclick="window.handleCleanupVoteClick('${report.id}')">🧹 <span>${report.cleanupVotes || 0}</span></button>
                 <button class="icon-action-btn" onclick="window.openDetailModalFromId('${report.id}')">💬 <span>${(report.comments || []).length}</span></button>
               </div>
             </div>
@@ -620,13 +617,8 @@ window.openDetailModalFromId = (id) => {
 window.handleLikeClick = async (id) => {
   state.reports = await toggleLikeReport(id, state.currentUser?.id || null);
   applyFilters();
-  renderStats();
-};
-
-window.handleCleanupVoteClick = async (id) => {
-  state.reports = await voteCleanupReport(id, state.currentUser?.id || null);
-  applyFilters();
-  renderStats();
+  if (state.currentUser) state.currentUser = await getCurrentUser();
+  updateAuthUI();
 };
 
 function openDetailModal(report) {
@@ -641,7 +633,15 @@ function openDetailModal(report) {
   document.getElementById('detailDesc').innerText = report.description || '상세 설명이 없습니다.';
   document.getElementById('detailTime').innerText = formatTimeAgo(report.createdAt);
   document.getElementById('detailLikesCount').innerText = report.likesCount || 0;
-  document.getElementById('detailCleanupVotes').innerText = report.cleanupVotes || 0;
+
+  document.getElementById('btnDetailLike').onclick = async () => {
+    await window.handleLikeClick(report.id);
+    const updated = state.reports.find(r => r.id === report.id);
+    if (updated) {
+      state.selectedReport = updated;
+      document.getElementById('detailLikesCount').innerText = updated.likesCount || 0;
+    }
+  };
 
   renderCommentsList(report.comments || []);
 

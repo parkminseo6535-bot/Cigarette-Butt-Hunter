@@ -42,7 +42,7 @@ export async function signUp(username, password) {
   // 로컬 폴백 (개발 미리보기용)
   const users = getLocalUsers();
   if (users.some(u => u.username === username)) throw new Error('이미 존재하는 아이디입니다.');
-  users.push({ username, password });
+  users.push({ username, password, points: 0 });
   localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
   const session = { id: 'local-' + username, username };
   localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(session));
@@ -90,7 +90,10 @@ export async function getCurrentUser() {
   }
 
   const stored = localStorage.getItem(STORAGE_KEY_SESSION);
-  return stored ? JSON.parse(stored) : null;
+  if (!stored) return null;
+  const session = JSON.parse(stored);
+  const user = getLocalUsers().find(u => u.username === session.username);
+  return { id: session.id, username: session.username, points: user?.points || 0, reportsCount: user?.reportsCount || 0, isAdmin: false };
 }
 
 function getLocalUsers() {
@@ -99,6 +102,18 @@ function getLocalUsers() {
   } catch (e) {
     return [];
   }
+}
+
+// 로컬 폴백 전용: 신고 작성(+10P) / 좋아요 받음(+2P) 시 해당 회원의 포인트를 누적
+function awardLocalPoints(userId, amount, { countReport = false } = {}) {
+  if (!userId || !userId.startsWith('local-')) return;
+  const username = userId.slice('local-'.length);
+  const users = getLocalUsers();
+  const user = users.find(u => u.username === username);
+  if (!user) return;
+  user.points = (user.points || 0) + amount;
+  if (countReport) user.reportsCount = (user.reportsCount || 0) + 1;
+  localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users));
 }
 
 function translateAuthError(error) {
@@ -221,6 +236,7 @@ export async function createReport({ title, description, address, severity, imag
     comments: []
   };
   saveLocalReports([newReport, ...reports]);
+  if (userId) awardLocalPoints(userId, 10, { countReport: true });
   return newReport;
 }
 
@@ -233,7 +249,10 @@ export async function toggleLikeReport(reportId, userId) {
 
   const reports = getLocalReports();
   const item = reports.find(r => r.id === reportId);
-  if (item) item.likesCount = (item.likesCount || 0) + 1;
+  if (item) {
+    item.likesCount = (item.likesCount || 0) + 1;
+    if (item.userId) awardLocalPoints(item.userId, 2);
+  }
   saveLocalReports(reports);
   return reports;
 }
