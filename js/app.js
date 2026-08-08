@@ -83,12 +83,18 @@ function renderStats() {
   const total = state.reports.length;
   document.getElementById('statTotal').innerText = total + '건';
 
+  const myReportsEl = document.getElementById('statMyReports');
+  const myReportsWrap = document.getElementById('statMyReportsWrap');
   const myPointsEl = document.getElementById('statMyPoints');
   const myPointsWrap = document.getElementById('statMyPointsWrap');
+
   if (state.currentUser) {
+    myReportsWrap.style.display = 'flex';
+    myReportsEl.innerText = (state.currentUser.reportsCount || 0) + '건';
     myPointsWrap.style.display = 'flex';
     myPointsEl.innerText = (state.currentUser.points || 0) + 'P';
   } else {
+    myReportsWrap.style.display = 'none';
     myPointsWrap.style.display = 'none';
   }
 }
