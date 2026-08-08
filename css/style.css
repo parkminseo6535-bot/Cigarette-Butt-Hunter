@@ -84,6 +84,13 @@ button { font-family: inherit; }
   flex-wrap: wrap;
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -132,13 +139,13 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: 6px 13px;
   border-radius: var(--radius-full);
   border: none;
   background: transparent;
   color: var(--text-muted);
   font-weight: 600;
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   cursor: pointer;
   transition: var(--transition-fast);
 }
@@ -774,7 +781,8 @@ button { font-family: inherit; }
   .modal-body { padding: 1.1rem; }
 }
 
-@media (max-width: 420px) {
-  .view-toggle { order: 3; width: 100%; justify-content: center; }
-  .header { justify-content: space-between; }
+@media (max-width: 640px) {
+  .header { row-gap: 0.5rem; }
+  .header-left { width: 100%; justify-content: space-between; gap: 0.6rem; }
+  .nav-controls { width: 100%; justify-content: space-between; }
 }
