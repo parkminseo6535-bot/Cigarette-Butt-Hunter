@@ -13,6 +13,7 @@ import {
   fetchMonthlyLeaderboard
 } from './supabaseClient.js';
 import { compressImageToWebP } from './imageUtils.js';
+import { extractGpsFromImage } from './exifGps.js';
 
 const LIGHT_TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 const LIGHT_TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
@@ -172,6 +173,23 @@ function initPickerMap() {
   }
 }
 
+function movePickerTo(lat, lng, zoom = 16) {
+  state.newReportCoords = { lat, lng };
+  if (state.pickerMap && state.pickerMarker) {
+    state.pickerMap.setView([lat, lng], zoom);
+    state.pickerMarker.setLatLng([lat, lng]);
+  }
+  updateAddressField(lat, lng);
+}
+
+function setLocationHint(message, tone = 'neutral') {
+  const hint = document.getElementById('locationHint');
+  if (!hint) return;
+  hint.innerText = message;
+  hint.className = 'location-hint' + (tone === 'success' ? ' success' : '');
+  hint.style.display = message ? 'block' : 'none';
+}
+
 function getCurrentGPSLocation() {
   if (!navigator.geolocation) {
     alert('브라우저가 GPS 조회를 지원하지 않습니다.');
@@ -181,13 +199,8 @@ function getCurrentGPSLocation() {
   btn.innerText = '위치 확인 중...';
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      const { latitude, longitude } = pos.coords;
-      state.newReportCoords = { lat: latitude, lng: longitude };
-      if (state.pickerMap && state.pickerMarker) {
-        state.pickerMap.setView([latitude, longitude], 16);
-        state.pickerMarker.setLatLng([latitude, longitude]);
-      }
-      updateAddressField(latitude, longitude);
+      movePickerTo(pos.coords.latitude, pos.coords.longitude, 16);
+      setLocationHint('현재 위치를 불러왔어요 · 지도를 눌러 수정할 수 있어요', 'success');
       btn.innerText = '현재 위치 가져오기';
     },
     () => {
@@ -415,11 +428,21 @@ async function handlePhotoSelected(e) {
   placeholderText.innerText = '사진 압축 중...';
 
   try {
-    const blob = await compressImageToWebP(file, { maxWidth: 600, quality: 0.5 });
+    const [blob, gps] = await Promise.all([
+      compressImageToWebP(file, { maxWidth: 600, quality: 0.5 }),
+      extractGpsFromImage(file)
+    ]);
     state.newReportPhotoBlob = blob;
     preview.src = URL.createObjectURL(blob);
     preview.style.display = 'block';
     placeholder.style.display = 'none';
+
+    if (gps) {
+      movePickerTo(gps.lat, gps.lng, 17);
+      setLocationHint('사진 속 위치 정보를 불러왔어요 · 지도를 눌러 수정할 수 있어요', 'success');
+    } else {
+      setLocationHint('사진에 위치 정보가 없어요 · 지도를 눌러 위치를 지정해주세요');
+    }
   } catch (err) {
     alert('사진을 처리하지 못했습니다. 다른 사진을 선택해주세요.');
     placeholderText.innerText = '터치하여 사진 업로드';
@@ -476,6 +499,7 @@ function resetReportForm() {
   document.getElementById('uploadPlaceholder').style.display = 'block';
   document.getElementById('uploadPlaceholderText').innerText = '터치하여 사진 업로드';
   state.newReportPhotoBlob = null;
+  setLocationHint('');
 }
 
 /* ==========================================================================
