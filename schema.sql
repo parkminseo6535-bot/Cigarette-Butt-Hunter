@@ -112,6 +112,22 @@ create policy "report_cleanup_votes_select_public" on public.report_cleanup_vote
 drop policy if exists "report_cleanup_votes_insert_anyone" on public.report_cleanup_votes;
 create policy "report_cleanup_votes_insert_anyone" on public.report_cleanup_votes for insert with check (true);
 
+-- 회원 1명당 신고 1건에 공감 1개만 허용 (비회원은 계정이 없어 제한 대상이 아님)
+-- 기존에 중복으로 쌓인 로그가 있다면 먼저 정리한 뒤 유니크 인덱스를 겁니다.
+delete from public.report_likes a using public.report_likes b
+  where a.user_id is not null
+    and a.user_id = b.user_id
+    and a.report_id = b.report_id
+    and a.id > b.id;
+
+create unique index if not exists report_likes_one_per_user
+  on public.report_likes (report_id, user_id)
+  where user_id is not null;
+
+-- 중복 정리를 반영해 likes_count를 실제 로그 개수로 재계산
+update public.reports r
+  set likes_count = (select count(*) from public.report_likes l where l.report_id = r.id);
+
 -- 5. 포인트 적립 원장 (월간 랭킹 집계용) ----------------------------------------
 create table if not exists public.point_events (
   id bigint generated always as identity primary key,

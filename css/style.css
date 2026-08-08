@@ -434,6 +434,9 @@ button { font-family: inherit; }
   transition: transform 0.15s ease, color 0.15s ease;
 }
 .grid-like-btn:hover { color: #ef4444; transform: scale(1.1); }
+.grid-like-btn.liked { color: #ef4444; font-weight: 700; }
+.grid-like-btn:disabled { cursor: default; }
+.grid-like-btn:disabled:hover { transform: none; }
 
 .insta-feed { display: flex; flex-direction: column; gap: 1.5rem; max-width: 560px; margin: 0 auto; }
 
@@ -484,6 +487,9 @@ button { font-family: inherit; }
 }
 .icon-action-btn:hover { transform: scale(1.1); color: var(--accent-green); }
 .icon-action-btn span { font-size: 0.85rem; font-weight: 600; }
+.icon-action-btn.liked { color: #ef4444; }
+.icon-action-btn:disabled { cursor: default; }
+.icon-action-btn:disabled:hover { transform: none; }
 
 .post-caption { font-size: 0.9rem; line-height: 1.4; margin-bottom: 6px; color: var(--text-main); }
 .post-caption-desc { color: var(--text-muted); font-size: 0.85rem; }
@@ -731,6 +737,9 @@ button { font-family: inherit; }
 }
 .like-stat-btn:hover { transform: scale(1.06); }
 .like-stat-btn:active { transform: scale(0.96); }
+.like-stat-btn.liked { color: #ef4444; }
+.like-stat-btn:disabled { cursor: default; }
+.like-stat-btn:disabled:hover { transform: none; }
 
 .comments-heading { font-size: 0.88rem; font-weight: 700; margin-bottom: 8px; color: var(--text-main); }
 #detailCommentsList { max-height: 150px; overflow-y: auto; margin-bottom: 12px; }

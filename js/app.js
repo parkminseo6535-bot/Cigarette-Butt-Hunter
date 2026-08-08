@@ -3,6 +3,7 @@ import {
   fetchReports,
   createReport,
   toggleLikeReport,
+  fetchMyLikedReportIds,
   addCommentToReport,
   signUp,
   signIn,
@@ -34,17 +35,24 @@ const state = {
   pickerMap: null,
   pickerMarker: null,
   currentUser: null,
-  authMode: 'login' // 'login' | 'signup'
+  authMode: 'login', // 'login' | 'signup'
+  likedReportIds: new Set()
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
   state.currentUser = await getCurrentUser();
+  await refreshLikedReportIds();
   updateAuthUI();
 
   await loadAndRenderData();
   setupEventListeners();
   initMap();
 });
+
+async function refreshLikedReportIds() {
+  const ids = await fetchMyLikedReportIds(state.currentUser?.id || null);
+  state.likedReportIds = new Set(ids);
+}
 
 async function loadAndRenderData() {
   state.reports = await fetchReports();
@@ -253,6 +261,7 @@ function renderFeedView() {
   if (state.feedLayout === 'grid') {
     let gridHtml = `<div class="insta-grid">`;
     state.filteredReports.forEach(report => {
+      const liked = isLikedByMe(report.id);
       gridHtml += `
         <div class="grid-card" onclick="window.openDetailModalFromId('${report.id}')">
           <img src="${report.imageUrl}" alt="${escapeHtml(report.title)}" loading="lazy" />
@@ -263,7 +272,7 @@ function renderFeedView() {
             <div class="grid-overlay-bottom">
               <h4 class="grid-title">${escapeHtml(report.title)}</h4>
               <div class="grid-stats">
-                <button class="grid-like-btn" onclick="event.stopPropagation(); window.handleLikeClick('${report.id}')">❤ ${report.likesCount || 0}</button>
+                <button class="grid-like-btn ${liked ? 'liked' : ''}" ${liked ? 'disabled' : ''} onclick="event.stopPropagation(); window.handleLikeClick('${report.id}')">❤ ${report.likesCount || 0}</button>
                 <span>💬 ${(report.comments || []).length}</span>
               </div>
             </div>
@@ -278,6 +287,7 @@ function renderFeedView() {
     state.filteredReports.forEach(report => {
       const timeAgo = formatTimeAgo(report.createdAt);
       const displayName = report.userName || '익명 헌터';
+      const liked = isLikedByMe(report.id);
       feedHtml += `
         <div class="post-card">
           <div class="post-header">
@@ -298,7 +308,7 @@ function renderFeedView() {
           <div class="post-actions">
             <div class="action-bar">
               <div class="action-btns-left">
-                <button class="icon-action-btn" onclick="window.handleLikeClick('${report.id}')">❤ <span>${report.likesCount || 0}</span></button>
+                <button class="icon-action-btn ${liked ? 'liked' : ''}" ${liked ? 'disabled' : ''} onclick="window.handleLikeClick('${report.id}')">❤ <span>${report.likesCount || 0}</span></button>
                 <button class="icon-action-btn" onclick="window.openDetailModalFromId('${report.id}')">💬 <span>${(report.comments || []).length}</span></button>
               </div>
             </div>
@@ -614,8 +624,21 @@ window.openDetailModalFromId = (id) => {
   }
 };
 
+function isLikedByMe(reportId) {
+  return state.likedReportIds.has(reportId);
+}
+
 window.handleLikeClick = async (id) => {
-  state.reports = await toggleLikeReport(id, state.currentUser?.id || null);
+  if (state.likedReportIds.has(id)) return;
+
+  try {
+    state.reports = await toggleLikeReport(id, state.currentUser?.id || null);
+    state.likedReportIds.add(id);
+  } catch (err) {
+    if (state.currentUser) alert(err.message || '공감 처리에 실패했습니다.');
+    return;
+  }
+
   applyFilters();
   if (state.currentUser) state.currentUser = await getCurrentUser();
   updateAuthUI();
@@ -634,13 +657,18 @@ function openDetailModal(report) {
   document.getElementById('detailTime').innerText = formatTimeAgo(report.createdAt);
   document.getElementById('detailLikesCount').innerText = report.likesCount || 0;
 
-  document.getElementById('btnDetailLike').onclick = async () => {
+  const likeBtn = document.getElementById('btnDetailLike');
+  likeBtn.disabled = isLikedByMe(report.id);
+  likeBtn.classList.toggle('liked', isLikedByMe(report.id));
+  likeBtn.onclick = async () => {
     await window.handleLikeClick(report.id);
     const updated = state.reports.find(r => r.id === report.id);
     if (updated) {
       state.selectedReport = updated;
       document.getElementById('detailLikesCount').innerText = updated.likesCount || 0;
     }
+    likeBtn.disabled = isLikedByMe(report.id);
+    likeBtn.classList.toggle('liked', isLikedByMe(report.id));
   };
 
   renderCommentsList(report.comments || []);
@@ -718,6 +746,7 @@ async function handleAuthFormSubmit(e) {
     else await signUp(username, password);
 
     state.currentUser = await getCurrentUser();
+    await refreshLikedReportIds();
     updateAuthUI();
     closeAuthModal();
     await loadAndRenderData();
@@ -732,8 +761,9 @@ async function handleAuthFormSubmit(e) {
 async function handleLogoutClick() {
   await signOut();
   state.currentUser = null;
+  await refreshLikedReportIds();
   updateAuthUI();
-  renderStats();
+  applyFilters();
 }
 
 function updateAuthUI() {

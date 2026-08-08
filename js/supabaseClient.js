@@ -5,33 +5,40 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, IS_SUPABASE_CONFIGURED } from './confi
 const STORAGE_KEY_REPORTS = 'gongcho_hunter_reports_v2';
 const STORAGE_KEY_USERS = 'gongcho_hunter_local_users';
 const STORAGE_KEY_SESSION = 'gongcho_hunter_local_session';
+const STORAGE_KEY_LOCAL_LIKES = 'gongcho_hunter_local_likes';
 
 const AUTH_EMAIL_DOMAIN = '@gongchohunter.local';
 
+// 지연 초기화: 스크립트 로딩 순서가 어긋나 window.supabase가 아직 없어도
+// 이후 첫 호출 시점에 다시 시도하도록 함
 let client = null;
-if (IS_SUPABASE_CONFIGURED && window.supabase) {
-  client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function getClient() {
+  if (!client && IS_SUPABASE_CONFIGURED && window.supabase) {
+    client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+  return client;
 }
 
 export function isLive() {
-  return client !== null;
+  return getClient() !== null;
 }
 
 /* ============================================================================
    인증 (아이디+비밀번호만 노출, 내부적으로 가상 이메일 매핑)
    ============================================================================ */
 export async function signUp(username, password) {
+  const supa = getClient();
   username = (username || '').trim();
   if (!username || !password) throw new Error('아이디와 비밀번호를 입력해주세요.');
 
-  if (client) {
+  if (supa) {
     const email = username + AUTH_EMAIL_DOMAIN;
-    const { data, error } = await client.auth.signUp({ email, password });
+    const { data, error } = await supa.auth.signUp({ email, password });
     if (error) throw new Error(translateAuthError(error));
 
     const userId = data.user?.id;
     if (userId) {
-      const { error: profileError } = await client.from('profiles').insert([{ id: userId, username }]);
+      const { error: profileError } = await supa.from('profiles').insert([{ id: userId, username }]);
       if (profileError && !profileError.message.includes('duplicate')) {
         throw new Error('회원 프로필 생성에 실패했습니다: ' + profileError.message);
       }
@@ -50,12 +57,13 @@ export async function signUp(username, password) {
 }
 
 export async function signIn(username, password) {
+  const supa = getClient();
   username = (username || '').trim();
   if (!username || !password) throw new Error('아이디와 비밀번호를 입력해주세요.');
 
-  if (client) {
+  if (supa) {
     const email = username + AUTH_EMAIL_DOMAIN;
-    const { error } = await client.auth.signInWithPassword({ email, password });
+    const { error } = await supa.auth.signInWithPassword({ email, password });
     if (error) throw new Error(translateAuthError(error));
     return getCurrentUser();
   }
@@ -69,21 +77,23 @@ export async function signIn(username, password) {
 }
 
 export async function signOut() {
-  if (client) {
-    await client.auth.signOut();
+  const supa = getClient();
+  if (supa) {
+    await supa.auth.signOut();
     return;
   }
   localStorage.removeItem(STORAGE_KEY_SESSION);
 }
 
 export async function getCurrentUser() {
-  if (client) {
-    const { data } = await client.auth.getUser();
+  const supa = getClient();
+  if (supa) {
+    const { data } = await supa.auth.getUser();
     const user = data?.user;
     if (!user) return null;
 
     let username = user.email ? user.email.replace(AUTH_EMAIL_DOMAIN, '') : '헌터';
-    const { data: profile } = await client.from('profiles').select('username, points, reports_count, is_admin').eq('id', user.id).maybeSingle();
+    const { data: profile } = await supa.from('profiles').select('username, points, reports_count, is_admin').eq('id', user.id).maybeSingle();
     if (profile) username = profile.username;
 
     return { id: user.id, username, points: profile?.points || 0, reportsCount: profile?.reports_count || 0, isAdmin: profile?.is_admin || false };
@@ -128,8 +138,9 @@ function translateAuthError(error) {
    신고 데이터 조회/생성
    ============================================================================ */
 export async function fetchReports() {
-  if (client) {
-    const { data: reports, error } = await client
+  const supa = getClient();
+  if (supa) {
+    const { data: reports, error } = await supa
       .from('reports')
       .select('*')
       .order('created_at', { ascending: false });
@@ -139,7 +150,7 @@ export async function fetchReports() {
       return [];
     }
 
-    const { data: comments } = await client
+    const { data: comments } = await supa
       .from('comments')
       .select('*')
       .order('created_at', { ascending: true });
@@ -185,16 +196,17 @@ function saveLocalReports(reports) {
 }
 
 export async function createReport({ title, description, address, severity, imageBlob, latitude, longitude, userId, displayName }) {
-  if (client) {
+  const supa = getClient();
+  if (supa) {
     const path = `${userId || 'guest'}/${Date.now()}.webp`;
-    const { error: uploadError } = await client.storage.from('report-photos').upload(path, imageBlob, {
+    const { error: uploadError } = await supa.storage.from('report-photos').upload(path, imageBlob, {
       contentType: 'image/webp'
     });
     if (uploadError) throw new Error('사진 업로드에 실패했습니다: ' + uploadError.message);
 
-    const { data: publicUrlData } = client.storage.from('report-photos').getPublicUrl(path);
+    const { data: publicUrlData } = supa.storage.from('report-photos').getPublicUrl(path);
 
-    const { data, error } = await client
+    const { data, error } = await supa
       .from('reports')
       .insert([{
         user_id: userId || null,
@@ -240,11 +252,52 @@ export async function createReport({ title, description, address, severity, imag
   return newReport;
 }
 
+/* ============================================================================
+   공감 (회원 1명당 신고 1건에 1개만 허용, 비회원은 계정이 없어 제한 대상 아님)
+   ============================================================================ */
+function getLocalLikes() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY_LOCAL_LIKES)) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// 로그인한 사용자가 이미 공감한 신고 id 목록 (비회원은 항상 빈 배열)
+export async function fetchMyLikedReportIds(userId) {
+  if (!userId) return [];
+  const supa = getClient();
+
+  if (supa) {
+    const { data, error } = await supa.from('report_likes').select('report_id').eq('user_id', userId);
+    if (error || !data) return [];
+    return data.map(r => r.report_id);
+  }
+
+  if (!userId.startsWith('local-')) return [];
+  return getLocalLikes().filter(l => l.userId === userId).map(l => l.reportId);
+}
+
 export async function toggleLikeReport(reportId, userId) {
-  if (client) {
-    const { error } = await client.from('report_likes').insert([{ report_id: reportId, user_id: userId || null }]);
-    if (error) console.warn('like insert failed:', error);
+  const supa = getClient();
+
+  if (supa) {
+    const { error } = await supa.from('report_likes').insert([{ report_id: reportId, user_id: userId || null }]);
+    if (error) {
+      if (error.code === '23505') throw new Error('이미 공감한 신고입니다.');
+      throw new Error('공감 처리에 실패했습니다: ' + error.message);
+    }
     return fetchReports();
+  }
+
+  // 로컬 폴백: 회원이면 같은 신고에 중복 공감을 막음
+  if (userId) {
+    const likes = getLocalLikes();
+    if (likes.some(l => l.userId === userId && l.reportId === reportId)) {
+      throw new Error('이미 공감한 신고입니다.');
+    }
+    likes.push({ userId, reportId });
+    localStorage.setItem(STORAGE_KEY_LOCAL_LIKES, JSON.stringify(likes));
   }
 
   const reports = getLocalReports();
@@ -258,8 +311,9 @@ export async function toggleLikeReport(reportId, userId) {
 }
 
 export async function voteCleanupReport(reportId, userId) {
-  if (client) {
-    const { error } = await client.from('report_cleanup_votes').insert([{ report_id: reportId, user_id: userId || null }]);
+  const supa = getClient();
+  if (supa) {
+    const { error } = await supa.from('report_cleanup_votes').insert([{ report_id: reportId, user_id: userId || null }]);
     if (error) console.warn('cleanup vote insert failed:', error);
     return fetchReports();
   }
@@ -272,8 +326,9 @@ export async function voteCleanupReport(reportId, userId) {
 }
 
 export async function addCommentToReport(reportId, commentText, authorName = '시민 헌터', userId = null) {
-  if (client) {
-    const { error } = await client.from('comments').insert([{
+  const supa = getClient();
+  if (supa) {
+    const { error } = await supa.from('comments').insert([{
       report_id: reportId,
       user_id: userId,
       author_name: authorName,
@@ -297,12 +352,13 @@ export async function addCommentToReport(reportId, commentText, authorName = '�
    랭킹
    ============================================================================ */
 export async function fetchMonthlyLeaderboard() {
-  if (client) {
+  const supa = getClient();
+  if (supa) {
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const { data, error } = await client
+    const { data, error } = await supa
       .from('point_events')
       .select('user_id, amount')
       .gte('created_at', startOfMonth.toISOString());
@@ -315,7 +371,7 @@ export async function fetchMonthlyLeaderboard() {
     const userIds = Object.keys(totals);
     if (userIds.length === 0) return [];
 
-    const { data: profiles } = await client.from('profiles').select('id, username').in('id', userIds);
+    const { data: profiles } = await supa.from('profiles').select('id, username').in('id', userIds);
     const nameMap = {};
     (profiles || []).forEach(p => { nameMap[p.id] = p.username; });
 
@@ -359,8 +415,9 @@ function formatRelativeTime(isoString) {
    관리자 (admin.html 전용) - anon key + is_admin RLS 정책으로 동작, 서버 불필요
    ============================================================================ */
 export async function adminFetchAllReports() {
-  if (!client) return [];
-  const { data, error } = await client
+  const supa = getClient();
+  if (!supa) return [];
+  const { data, error } = await supa
     .from('reports')
     .select('*')
     .order('created_at', { ascending: false })
@@ -370,8 +427,9 @@ export async function adminFetchAllReports() {
 }
 
 export async function adminUpdateReport(id, { title, description, severity, address }) {
-  if (!client) throw new Error('Supabase가 연동되어 있지 않습니다.');
-  const { error } = await client
+  const supa = getClient();
+  if (!supa) throw new Error('Supabase가 연동되어 있지 않습니다.');
+  const { error } = await supa
     .from('reports')
     .update({ title, description, severity, address })
     .eq('id', id);
@@ -379,17 +437,18 @@ export async function adminUpdateReport(id, { title, description, severity, addr
 }
 
 export async function adminDeleteReport(id, imageUrl) {
-  if (!client) throw new Error('Supabase가 연동되어 있지 않습니다.');
+  const supa = getClient();
+  if (!supa) throw new Error('Supabase가 연동되어 있지 않습니다.');
 
   if (imageUrl) {
     const marker = '/report-photos/';
     const idx = imageUrl.indexOf(marker);
     if (idx !== -1) {
       const objectPath = imageUrl.slice(idx + marker.length);
-      await client.storage.from('report-photos').remove([objectPath]).catch(() => {});
+      await supa.storage.from('report-photos').remove([objectPath]).catch(() => {});
     }
   }
 
-  const { error } = await client.from('reports').delete().eq('id', id);
+  const { error } = await supa.from('reports').delete().eq('id', id);
   if (error) throw new Error('삭제에 실패했습니다: ' + error.message);
 }
